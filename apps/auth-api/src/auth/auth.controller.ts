@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreatePasswordUserDto } from './dtos/register-user.dto';
 import { VerificationTokenDto } from './dtos/verification-token.dto';
@@ -50,7 +50,7 @@ async signIn(
     return this.authService.resetPassword(id, body);
   }
 
-  @Post('me')
+  @Get('me')
   async me(@Req() req:Request){
     const sessionId = req.headers.get(headers.SESSION)
     if(!sessionId) throw new UnauthorizedException()
