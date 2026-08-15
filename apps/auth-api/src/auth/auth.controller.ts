@@ -52,8 +52,18 @@ async signIn(
 
   @Get('me')
   async me(@Req() req:Request){
-    const sessionId = req.headers.get(headers.SESSION)
+    const sessionId =  req.headers[headers.SESSION];
     if(!sessionId) throw new UnauthorizedException()
     return this.authService.getSession(sessionId)
   }
+  @Post("sign-out")
+async signOut(@Req() req: Request) {
+  const sessionId = req.headers[headers.SESSION];
+
+  if (!sessionId) {
+    throw new UnauthorizedException();
+  }
+
+  return this.authService.deleteSession(sessionId);
+}
 }

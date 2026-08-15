@@ -312,4 +312,20 @@ export class AuthService {
 
   return session;
 }
+async deleteSession(sessionId: string) {
+  await this.redis.del(
+    RedisKeys.sessionById(sessionId),
+  );
+
+  await this.db.session.delete({
+    where: {
+      id: sessionId,
+    },
+  });
+
+  return {
+    success: true,
+    message: "signed out successfully",
+  };
+}
 }
