@@ -5,6 +5,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { DbService } from '../db/db.service';
 import { CreatePasswordUserDto } from './dtos/register-user.dto';
@@ -15,6 +16,7 @@ import {
 } from '../constants/verification_token';
 import {
   account_provider,
+  session,
   user,
   verification_token,
   verification_token_type,
@@ -24,17 +26,27 @@ import { VerificationTokenDto } from './dtos/verification-token.dto';
 import { LoginUserDto } from './dtos/login-user.dto';
 import { getSessionExpiry } from '../constants/session';
 import { ResetPasswordDto } from './dtos/change-password.dto';
+import { RedisService } from '../redis/redis.service';
+import { RedisKeys } from '../constants/redis-key';
+import { RedisExpiry } from '../constants/redis-expiry';
 
 @Injectable()
 export class AuthService {
-  constructor(private db: DbService) {}
+  constructor(private db: DbService, private redis:RedisService) {}
 
   async getUserById(userId: string) {
+    const cache = await this.redis.get<user>(RedisKeys.getUserById(userId))
+    if(cache) return cache
     const user = await this.db.user.findUnique({ where: { id: userId } });
+    await this.redis.set(RedisKeys.getUserById(userId),user,{ex:RedisExpiry.USER})
     return user;
   }
   async getUserByEmail(email: string) {
+        const cache = await this.redis.get<user>(RedisKeys.getUserByEmail(email))
+    if(cache) return cache
     const user = await this.db.user.findUnique({ where: { email } });
+        await this.redis.set(RedisKeys.getUserByEmail(email),user,{ex:RedisExpiry.USER})
+
     return user;
   }
   async hash(secret: string) {
@@ -45,9 +57,14 @@ export class AuthService {
     return verify(data.hashed, data.secret);
   }
   private async saveNewUser(data: CreatePasswordUserDto) {
-    return this.db.user.create({
+   const user = await this.db.user.create({
       data,
     });
+        await this.redis.set(RedisKeys.getUserByEmail(user.email),user,{ex:RedisExpiry.USER})
+        await this.redis.set(RedisKeys.getUserById(user.id),user,{ex:RedisExpiry.USER})
+
+
+    return user
   }
   private async createVerificationToken(
     userId: string,
@@ -68,6 +85,8 @@ export class AuthService {
         code: hashedOtp,
       },
     });
+    await this.redis.set(RedisKeys.verificationToken(type, verification_token.id), verification_token, {ex:RedisExpiry[type]})
+     await this.redis.set(RedisKeys.verificationTokenById( verification_token.id), verification_token, {ex:RedisExpiry[type]})
     return {
       otp,
       verification_token,
@@ -105,6 +124,8 @@ export class AuthService {
   }
 
   async getVerificationTokenById(id: string) {
+   const cache = await this.redis.get<verification_token>(RedisKeys.getUserById(id)) 
+   if(cache && new Date(cache.expires_at)<=new Date()) return cache
     return this.db.verification_token.findUnique({
       where: { id, expires_at: { gt: new Date() } },
     });
@@ -169,9 +190,28 @@ export class AuthService {
     });
 
     //cache token using redis
-
+    await this.redis.set(RedisKeys.sessionById(session.id), session,{ex:RedisExpiry.session})
     return session;
   }
+  private async getUserSession(sessionId: string) {
+  const key = RedisKeys.sessionById(sessionId);
+
+  const cachedSession =
+    await this.redis.get<session>(key);
+
+  if (!cachedSession) {
+    return null;
+  }
+
+  const now = new Date();
+
+  if (cachedSession.expires_at <= now) {
+    await this.redis.del(key);
+    return null;
+  }
+
+  return cachedSession;
+}
   async loginUser(data: LoginUserDto, ua: string, ip: string) {
     const user = await this.getUserByEmail(data.email);
     if (!user || !user.password) throw new NotFoundException('user not found');
@@ -255,4 +295,21 @@ export class AuthService {
         'password changed successfully please login with your new password',
     };
   }
+  public async getSession(sessionId: string) {
+  const key = RedisKeys.sessionById(sessionId);
+
+  const session = await this.getUserSession(sessionId)
+
+  if (!session) {
+    throw new UnauthorizedException("Invalid or expired session");
+  }
+
+  if (new Date(session.expires_at).getTime() <= Date.now()) {
+    await this.redis.del(key);
+
+    throw new UnauthorizedException("Invalid or expired session");
+  }
+
+  return session;
+}
 }

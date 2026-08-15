@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { CreatePasswordUserDto } from './dtos/register-user.dto';
 import { VerificationTokenDto } from './dtos/verification-token.dto';
@@ -8,6 +8,7 @@ import {
   RequestPasswordResetDto,
   ResetPasswordDto,
 } from './dtos/change-password.dto';
+import { headers } from '../constants/headers';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -47,5 +48,12 @@ async signIn(
   @Post('reset-password/:id')
   async resetPassword(@Param('id') id: string, @Body() body: ResetPasswordDto) {
     return this.authService.resetPassword(id, body);
+  }
+
+  @Post('me')
+  async me(@Req() req:Request){
+    const sessionId = req.headers.get(headers.SESSION)
+    if(!sessionId) throw new UnauthorizedException()
+    return this.authService.getSession(sessionId)
   }
 }
