@@ -1,0 +1,86 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model user {
+  id String @id @default(cuid())
+
+  name        String
+  email       String    @unique
+  password    String?
+  image       String?
+  verified_at DateTime?
+
+  sessions session[]
+  accounts account[]
+  verification_tokens verification_token[]
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+model session {
+  id String @id @default(cuid())
+
+  user_id String
+  user    user   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  ua String
+  ip String @default("0.0.0")
+
+  expires_at DateTime
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+enum account_provider {
+  PASSWORD
+  GOOGLE
+  GITHUB
+}
+
+model account {
+  id      String @id @default(cuid())
+
+  user_id String
+  user    user   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  
+  provider    account_provider
+  refresh_token String?
+
+  verified_at DateTime
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+
+  @@unique([user_id, provider])
+  @@index([user_id,provider])
+}
+
+enum verification_token_type{
+  EMAIL_VERIFICATION
+  RESET_PASSWORD
+}
+model verification_token {
+  id      String @id @default(cuid())
+
+  user_id String
+  user    user   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  type verification_token_type 
+  code  String 
+  expires_at DateTime
+  created_at  DateTime         @default(now())
+  updated_at  DateTime         @updatedAt
+}
+
