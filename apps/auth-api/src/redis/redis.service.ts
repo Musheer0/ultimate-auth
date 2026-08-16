@@ -1,5 +1,5 @@
-import { Injectable } from "@nestjs/common";
-import { Redis } from "@upstash/redis";
+import { Injectable } from '@nestjs/common';
+import { Redis } from '@upstash/redis';
 
 @Injectable()
 export class RedisService extends Redis {

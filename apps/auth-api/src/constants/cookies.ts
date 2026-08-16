@@ -1,3 +1,3 @@
 export const cookies = {
-    SESSION: 'ultimate-auth-session'
-}
+  SESSION: 'ultimate-auth-session',
+};

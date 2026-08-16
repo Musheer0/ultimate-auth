@@ -45,20 +45,27 @@ type SessionWithUser = Prisma.sessionGetPayload<{
 }>;
 @Injectable()
 export class AuthService {
-  constructor(private db: DbService, private redis:RedisService) {}
+  constructor(
+    private db: DbService,
+    private redis: RedisService,
+  ) {}
   //internal helpers
   private async getUserById(userId: string) {
-    const cache = await this.redis.get<user>(RedisKeys.getUserById(userId))
-    if(cache) return cache
+    const cache = await this.redis.get<user>(RedisKeys.getUserById(userId));
+    if (cache) return cache;
     const user = await this.db.user.findUnique({ where: { id: userId } });
-    await this.redis.set(RedisKeys.getUserById(userId),user,{ex:RedisExpiry.USER})
+    await this.redis.set(RedisKeys.getUserById(userId), user, {
+      ex: RedisExpiry.USER,
+    });
     return user;
   }
   private async getUserByEmail(email: string) {
-        const cache = await this.redis.get<user>(RedisKeys.getUserByEmail(email))
-    if(cache) return cache
+    const cache = await this.redis.get<user>(RedisKeys.getUserByEmail(email));
+    if (cache) return cache;
     const user = await this.db.user.findUnique({ where: { email } });
-        await this.redis.set(RedisKeys.getUserByEmail(email),user,{ex:RedisExpiry.USER})
+    await this.redis.set(RedisKeys.getUserByEmail(email), user, {
+      ex: RedisExpiry.USER,
+    });
 
     return user;
   }
@@ -70,14 +77,17 @@ export class AuthService {
     return verify(data.hashed, data.secret);
   }
   private async saveNewUser(data: CreatePasswordUserDto) {
-   const user = await this.db.user.create({
+    const user = await this.db.user.create({
       data,
     });
-        await this.redis.set(RedisKeys.getUserByEmail(user.email),user,{ex:RedisExpiry.USER})
-        await this.redis.set(RedisKeys.getUserById(user.id),user,{ex:RedisExpiry.USER})
+    await this.redis.set(RedisKeys.getUserByEmail(user.email), user, {
+      ex: RedisExpiry.USER,
+    });
+    await this.redis.set(RedisKeys.getUserById(user.id), user, {
+      ex: RedisExpiry.USER,
+    });
 
-
-    return user
+    return user;
   }
   private async createVerificationToken(
     userId: string,
@@ -98,25 +108,34 @@ export class AuthService {
         code: hashedOtp,
       },
     });
-    await this.redis.set(RedisKeys.verificationToken(type, verification_token.id), verification_token, {ex:RedisExpiry[type]})
-     await this.redis.set(RedisKeys.verificationTokenById( verification_token.id), verification_token, {ex:RedisExpiry[type]})
+    await this.redis.set(
+      RedisKeys.verificationToken(type, verification_token.id),
+      verification_token,
+      { ex: RedisExpiry[type] },
+    );
+    await this.redis.set(
+      RedisKeys.verificationTokenById(verification_token.id),
+      verification_token,
+      { ex: RedisExpiry[type] },
+    );
     return {
       otp,
       verification_token,
     };
   }
-  private async sendEmail(data:{
-    otp: string,
-    verification_token: verification_token,
+  private async sendEmail(data: {
+    otp: string;
+    verification_token: verification_token;
   }) {
-    console.log(data)
+    console.log(data);
     //TODO send email
   }
 
-
   private async getVerificationTokenById(id: string) {
-   const cache = await this.redis.get<verification_token>(RedisKeys.getUserById(id)) 
-   if(cache && new Date(cache.expires_at)<=new Date()) return cache
+    const cache = await this.redis.get<verification_token>(
+      RedisKeys.getUserById(id),
+    );
+    if (cache && new Date(cache.expires_at) <= new Date()) return cache;
     return this.db.verification_token.findUnique({
       where: { id, expires_at: { gt: new Date() } },
     });
@@ -139,16 +158,24 @@ export class AuthService {
       },
       select: null,
     });
-    await this.redis.set(RedisKeys.getUserById(userId),user,{ex:RedisExpiry.USER})
-        await this.redis.set(RedisKeys.getUserByEmail(user.email),user,{ex:RedisExpiry.USER})
+    await this.redis.set(RedisKeys.getUserById(userId), user, {
+      ex: RedisExpiry.USER,
+    });
+    await this.redis.set(RedisKeys.getUserByEmail(user.email), user, {
+      ex: RedisExpiry.USER,
+    });
 
     return user;
   }
   private async cacheUser(user: user) {
-        await this.redis.set(RedisKeys.getUserByEmail(user.email),user,{ex:RedisExpiry.USER})
-        await this.redis.set(RedisKeys.getUserById(user.id),user,{ex:RedisExpiry.USER})
+    await this.redis.set(RedisKeys.getUserByEmail(user.email), user, {
+      ex: RedisExpiry.USER,
+    });
+    await this.redis.set(RedisKeys.getUserById(user.id), user, {
+      ex: RedisExpiry.USER,
+    });
   }
-    private async getUserAccount(userId: string, type: account_provider) {
+  private async getUserAccount(userId: string, type: account_provider) {
     return this.db.account.findFirst({
       where: {
         user_id: userId,
@@ -168,35 +195,42 @@ export class AuthService {
     });
 
     //cache token using redis
-    await this.redis.set(RedisKeys.sessionById(session.id), session,{ex:RedisExpiry.session})
+    await this.redis.set(RedisKeys.sessionById(session.id), session, {
+      ex: RedisExpiry.session,
+    });
     return session;
   }
   private async getUserSession(sessionId: string) {
-  const key = RedisKeys.sessionById(sessionId);
-  const cachedSession =
-    await this.redis.get<SessionWithUser>(key);
-  if (!cachedSession) {
-    const session = await this.db.session.findUnique({
-      where:{
-        id:sessionId
-      },
-      include:{
-        user:{
-          select:{email:true,name:true,image:true,id:true,verified_at:true}
-        }
-      }
-    })
-    await this.redis.set(key,session,{ex:RedisExpiry.session})
-    return session
-  }
-  const now = new Date();
-  if (cachedSession.expires_at <= now) {
-    await this.redis.del(key);
-    return null;
-  }
+    const key = RedisKeys.sessionById(sessionId);
+    const cachedSession = await this.redis.get<SessionWithUser>(key);
+    if (!cachedSession) {
+      const session = await this.db.session.findUnique({
+        where: {
+          id: sessionId,
+        },
+        include: {
+          user: {
+            select: {
+              email: true,
+              name: true,
+              image: true,
+              id: true,
+              verified_at: true,
+            },
+          },
+        },
+      });
+      await this.redis.set(key, session, { ex: RedisExpiry.session });
+      return session;
+    }
+    const now = new Date();
+    if (cachedSession.expires_at <= now) {
+      await this.redis.del(key);
+      return null;
+    }
 
-  return cachedSession;
-}
+    return cachedSession;
+  }
 
   private async updateUserPassword(userId: string, new_password: string) {
     const hashed = await this.hash(new_password);
@@ -204,9 +238,8 @@ export class AuthService {
       where: { id: userId },
       data: { password: hashed },
     });
-    await this.cacheUser(user)
+    await this.cacheUser(user);
   }
-
 
   //api helpers
   async registerPasswordUser(data: CreatePasswordUserDto) {
@@ -255,12 +288,15 @@ export class AuthService {
     const user = await this.getUserByEmail(data.email);
     if (!user || !user.password) throw new NotFoundException('user not found');
     if (!user.verified_at) {
-      const token = await this.createVerificationToken(user.id, "EMAIL_VERIFICATION");
-      await this.sendEmail(token)
+      const token = await this.createVerificationToken(
+        user.id,
+        'EMAIL_VERIFICATION',
+      );
+      await this.sendEmail(token);
       throw new BadRequestException({
-        success:false,
-        message:'email not verified please check the otp sent to your email',
-        verification:token.verification_token.id
+        success: false,
+        message: 'email not verified please check the otp sent to your email',
+        verification: token.verification_token.id,
       });
     }
     const password_account = await this.getUserAccount(user.id, 'PASSWORD');
@@ -328,36 +364,34 @@ export class AuthService {
     };
   }
   public async getSession(sessionId: string) {
-  const key = RedisKeys.sessionById(sessionId);
+    const key = RedisKeys.sessionById(sessionId);
 
-  const session = await this.getUserSession(sessionId)
+    const session = await this.getUserSession(sessionId);
 
-  if (!session) {
-    throw new UnauthorizedException("Invalid or expired session");
+    if (!session) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    if (new Date(session.expires_at).getTime() <= Date.now()) {
+      await this.redis.del(key);
+
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    return session;
   }
+  async deleteSession(sessionId: string) {
+    await this.redis.del(RedisKeys.sessionById(sessionId));
 
-  if (new Date(session.expires_at).getTime() <= Date.now()) {
-    await this.redis.del(key);
+    await this.db.session.delete({
+      where: {
+        id: sessionId,
+      },
+    });
 
-    throw new UnauthorizedException("Invalid or expired session");
+    return {
+      success: true,
+      message: 'signed out successfully',
+    };
   }
-
-  return session;
-}
-async deleteSession(sessionId: string) {
-  await this.redis.del(
-    RedisKeys.sessionById(sessionId),
-  );
-
-  await this.db.session.delete({
-    where: {
-      id: sessionId,
-    },
-  });
-
-  return {
-    success: true,
-    message: "signed out successfully",
-  };
-}
 }

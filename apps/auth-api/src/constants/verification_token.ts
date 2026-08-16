@@ -8,7 +8,6 @@ export const verification_token_expires: Record<
   RESET_PASSWORD: 5 * 60 * 1000,
 };
 
-
 export const getVerificationTokenExpiry = (type: verification_token_type) => {
   return new Date(Date.now() + verification_token_expires[type]);
 };

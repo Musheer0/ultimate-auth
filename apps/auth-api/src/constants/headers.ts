@@ -1,3 +1,3 @@
 export const headers = {
- SESSION:"x-session-id"
-} as const
+  SESSION: 'x-session-id',
+} as const;
