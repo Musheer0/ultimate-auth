@@ -30,6 +30,8 @@ import { ResetPasswordDto } from './dtos/change-password.dto';
 import { RedisService } from '../redis/redis.service';
 import { RedisKeys } from '../constants/redis-key';
 import { RedisExpiry } from '../constants/redis-expiry';
+import { AUTH_EVENTS } from '../constants/events';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 type SessionWithUser = Prisma.sessionGetPayload<{
   include: {
     user: {
@@ -48,6 +50,7 @@ export class AuthService {
   constructor(
     private db: DbService,
     private redis: RedisService,
+    private readonly emitter:EventEmitter2
   ) {}
   //internal helpers
   private async getUserById(userId: string) {
@@ -125,10 +128,10 @@ export class AuthService {
   }
   private async sendEmail(data: {
     otp: string;
-    verification_token: verification_token;
+    email:string,
+    type:(typeof AUTH_EVENTS)[keyof typeof AUTH_EVENTS]
   }) {
-    console.log(data);
-    //TODO send email
+    this.emitter.emit(data.type, data)
   }
 
   private async getVerificationTokenById(id: string) {
@@ -254,7 +257,7 @@ export class AuthService {
       const verification_token = await this.createVerificationToken(
         new_user.id,
       );
-      await this.sendEmail(verification_token);
+      await this.sendEmail({otp:verification_token.otp, email:new_user.email,type:AUTH_EVENTS.USER_VERIFICATION });
       return {
         success: true,
         message: 'verification code sent to user',
@@ -292,7 +295,7 @@ export class AuthService {
         user.id,
         'EMAIL_VERIFICATION',
       );
-      await this.sendEmail(token);
+      await this.sendEmail({otp:token.otp, email:user.email, type:AUTH_EVENTS.USER_VERIFICATION});
       throw new BadRequestException({
         success: false,
         message: 'email not verified please check the otp sent to your email',
@@ -326,7 +329,7 @@ export class AuthService {
       'RESET_PASSWORD',
     );
 
-    await this.sendEmail(verificationToken);
+    await this.sendEmail({otp:verificationToken.otp, email:user.email,type:AUTH_EVENTS.USER_RESET_PASSWORD});
 
     return {
       success: true,

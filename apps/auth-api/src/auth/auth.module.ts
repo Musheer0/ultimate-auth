@@ -7,9 +7,7 @@ import { RedisService } from '../redis/redis.service';
 import { seconds, ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
-if (!process.env.REDIS_URL) {
-  throw new Error('redis url not found');
-}
+
 @Module({
   providers: [AuthService, DbService, RedisService],
   controllers: [AuthController],
