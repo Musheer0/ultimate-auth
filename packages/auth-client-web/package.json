@@ -1,0 +1,33 @@
+{
+  "name": "@ultimate-auth/client",
+  "bin":{
+    "ultimate-sync-api": "./scripts/sync-api.js"
+  },
+  "version": "1.0.0",
+  "description": "type safe client for ultimate auth backend",
+  "type": "module",
+  "main": "index.js",
+  "exports":"./dist/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "sync-api": "node scripts/sync-api.js ",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.26.2",
+  "dependencies": {
+    "@types/node": "^24.13.3",
+    "dotenv": "^17.4.2",
+    "openapi-fetch": "^0.17.0",
+    "openapi-typescript": "^7.13.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "files":[
+    "dist",
+    "scripts"
+  ]
+}
