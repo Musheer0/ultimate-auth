@@ -16,6 +16,7 @@ import {
 } from '../constants/verification_token';
 import {
   account_provider,
+  Prisma,
   session,
   user,
   verification_token,
@@ -29,19 +30,31 @@ import { ResetPasswordDto } from './dtos/change-password.dto';
 import { RedisService } from '../redis/redis.service';
 import { RedisKeys } from '../constants/redis-key';
 import { RedisExpiry } from '../constants/redis-expiry';
-
+type SessionWithUser = Prisma.sessionGetPayload<{
+  include: {
+    user: {
+      select: {
+        email: true;
+        name: true;
+        image: true;
+        id: true;
+        verified_at: true;
+      };
+    };
+  };
+}>;
 @Injectable()
 export class AuthService {
   constructor(private db: DbService, private redis:RedisService) {}
-
-  async getUserById(userId: string) {
+  //internal helpers
+  private async getUserById(userId: string) {
     const cache = await this.redis.get<user>(RedisKeys.getUserById(userId))
     if(cache) return cache
     const user = await this.db.user.findUnique({ where: { id: userId } });
     await this.redis.set(RedisKeys.getUserById(userId),user,{ex:RedisExpiry.USER})
     return user;
   }
-  async getUserByEmail(email: string) {
+  private async getUserByEmail(email: string) {
         const cache = await this.redis.get<user>(RedisKeys.getUserByEmail(email))
     if(cache) return cache
     const user = await this.db.user.findUnique({ where: { email } });
@@ -49,11 +62,11 @@ export class AuthService {
 
     return user;
   }
-  async hash(secret: string) {
+  private async hash(secret: string) {
     return hash(secret);
   }
 
-  async verify(data: { secret: string; hashed: string }) {
+  private async verify(data: { secret: string; hashed: string }) {
     return verify(data.hashed, data.secret);
   }
   private async saveNewUser(data: CreatePasswordUserDto) {
@@ -92,38 +105,16 @@ export class AuthService {
       verification_token,
     };
   }
-  private async sendEmail({
+  private async sendEmail(data:{
     otp: string,
     verification_token: verification_token,
   }) {
+    console.log(data)
     //TODO send email
   }
-  async registerPasswordUser(data: CreatePasswordUserDto) {
-    try {
-      const existing_user = await this.getUserByEmail(data.email);
-      if (!existing_user) throw new ConflictException('users already exists');
-      const hashedPassword = await this.hash(data.password);
-      const new_user = await this.saveNewUser({
-        ...data,
-        password: hashedPassword,
-      });
-      const verification_token = await this.createVerificationToken(
-        new_user.id,
-      );
-      await this.sendEmail(verification_token);
-      return {
-        success: true,
-        message: 'verification code sent to user',
-        verification_id: verification_token.verification_token.id,
-        expires_at: verification_token.verification_token.expires_at,
-      };
-    } catch (error) {
-      console.error(error);
-      throw new InternalServerErrorException('error creating user');
-    }
-  }
 
-  async getVerificationTokenById(id: string) {
+
+  private async getVerificationTokenById(id: string) {
    const cache = await this.redis.get<verification_token>(RedisKeys.getUserById(id)) 
    if(cache && new Date(cache.expires_at)<=new Date()) return cache
     return this.db.verification_token.findUnique({
@@ -148,29 +139,16 @@ export class AuthService {
       },
       select: null,
     });
+    await this.redis.set(RedisKeys.getUserById(userId),user,{ex:RedisExpiry.USER})
+        await this.redis.set(RedisKeys.getUserByEmail(user.email),user,{ex:RedisExpiry.USER})
+
     return user;
   }
   private async cacheUser(user: user) {
-    //cache using redis
+        await this.redis.set(RedisKeys.getUserByEmail(user.email),user,{ex:RedisExpiry.USER})
+        await this.redis.set(RedisKeys.getUserById(user.id),user,{ex:RedisExpiry.USER})
   }
-  async verifyPasswordUserEmail(data: VerificationTokenDto) {
-    const token = await this.getVerificationTokenById(data.token_id);
-    if (!token) throw new NotFoundException('invalid code or token expired');
-    const isValidCode = await this.verify({
-      secret: data.code,
-      hashed: token.code,
-    });
-    if (!isValidCode)
-      throw new BadRequestException('invalid code or token expired');
-    const user = await this.verifyPasswordUser(token.user_id);
-    await this.cacheUser(user);
-    return {
-      success: true,
-      email: user.email,
-      message: 'verification successful you can now login ',
-    };
-  }
-  private async getUserAccount(userId: string, type: account_provider) {
+    private async getUserAccount(userId: string, type: account_provider) {
     return this.db.account.findFirst({
       where: {
         user_id: userId,
@@ -195,16 +173,23 @@ export class AuthService {
   }
   private async getUserSession(sessionId: string) {
   const key = RedisKeys.sessionById(sessionId);
-
   const cachedSession =
-    await this.redis.get<session>(key);
-
+    await this.redis.get<SessionWithUser>(key);
   if (!cachedSession) {
-    return null;
+    const session = await this.db.session.findUnique({
+      where:{
+        id:sessionId
+      },
+      include:{
+        user:{
+          select:{email:true,name:true,image:true,id:true,verified_at:true}
+        }
+      }
+    })
+    await this.redis.set(key,session,{ex:RedisExpiry.session})
+    return session
   }
-
   const now = new Date();
-
   if (cachedSession.expires_at <= now) {
     await this.redis.del(key);
     return null;
@@ -212,10 +197,72 @@ export class AuthService {
 
   return cachedSession;
 }
+
+  private async updateUserPassword(userId: string, new_password: string) {
+    const hashed = await this.hash(new_password);
+    const user = await this.db.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+    await this.cacheUser(user)
+  }
+
+
+  //api helpers
+  async registerPasswordUser(data: CreatePasswordUserDto) {
+    try {
+      const existing_user = await this.getUserByEmail(data.email);
+      if (existing_user) throw new ConflictException('users already exists');
+      const hashedPassword = await this.hash(data.password);
+      const new_user = await this.saveNewUser({
+        ...data,
+        password: hashedPassword,
+      });
+      const verification_token = await this.createVerificationToken(
+        new_user.id,
+      );
+      await this.sendEmail(verification_token);
+      return {
+        success: true,
+        message: 'verification code sent to user',
+        verification_id: verification_token.verification_token.id,
+        expires_at: verification_token.verification_token.expires_at,
+      };
+    } catch (error) {
+      console.error(error);
+      throw new InternalServerErrorException('error creating user');
+    }
+  }
+  async verifyPasswordUserEmail(data: VerificationTokenDto) {
+    const token = await this.getVerificationTokenById(data.token_id);
+    if (!token) throw new NotFoundException('invalid code or token expired');
+    const isValidCode = await this.verify({
+      secret: data.code,
+      hashed: token.code,
+    });
+    if (!isValidCode)
+      throw new BadRequestException('invalid code or token expired');
+    const user = await this.verifyPasswordUser(token.user_id);
+    await this.cacheUser(user);
+    return {
+      success: true,
+      email: user.email,
+      message: 'verification successful you can now login ',
+    };
+  }
+
   async loginUser(data: LoginUserDto, ua: string, ip: string) {
     const user = await this.getUserByEmail(data.email);
     if (!user || !user.password) throw new NotFoundException('user not found');
-    if (!user.verified_at) throw new BadRequestException('email not verified');
+    if (!user.verified_at) {
+      const token = await this.createVerificationToken(user.id, "EMAIL_VERIFICATION");
+      await this.sendEmail(token)
+      throw new BadRequestException({
+        success:false,
+        message:'email not verified please check the otp sent to your email',
+        verification:token.verification_token.id
+      });
+    }
     const password_account = await this.getUserAccount(user.id, 'PASSWORD');
     if (!password_account) throw new NotFoundException('user not found');
     const isValidPassword = await this.verify({
@@ -226,22 +273,7 @@ export class AuthService {
     const session = await this.createUserSession(user.id, ua, ip);
     return { sessionId: session.id, expiresAt: session.expires_at };
   }
-  private async createPasswordAccount(userId: string, type: account_provider) {
-    return this.db.account.create({
-      data: {
-        user_id: userId,
-        provider: type,
-        verified_at: new Date(),
-      },
-    });
-  }
-  private async updateUserPassword(userId: string, new_password: string) {
-    const hashed = await this.hash(new_password);
-    const user = await this.db.user.update({
-      where: { id: userId },
-      data: { password: hashed },
-    });
-  }
+
   async requestPasswordReset(email: string) {
     const user = await this.getUserByEmail(email);
 

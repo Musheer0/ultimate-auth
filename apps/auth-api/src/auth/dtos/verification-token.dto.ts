@@ -1,10 +1,11 @@
-import { IsString, Min } from 'class-validator';
+import { IsString, Min, MinLength } from 'class-validator';
 
-export class VerificationTokenDto {
+export class 
+VerificationTokenDto {
   @IsString()
   token_id!: string;
 
   @IsString()
-  @Min(6)
+  @MinLength(6)
   code!: string;
 }
