@@ -10,10 +10,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.26.2",
-  "dependencies": {
-    "@types/cookie-parser": "^1.4.10",
-    "@types/express": "^5.0.6",
-    "auth-api": "^1.0.10"
-  }
+  "packageManager": "pnpm@10.26.2"
 }

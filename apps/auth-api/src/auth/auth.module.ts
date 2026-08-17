@@ -7,7 +7,8 @@ import { RedisService } from '../redis/redis.service';
 import { seconds, ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
-
+import dotenv from 'dotenv'
+dotenv.config()
 @Module({
   providers: [AuthService, DbService, RedisService],
   controllers: [AuthController],
